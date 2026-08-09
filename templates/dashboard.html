@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Kite Risk Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Kite Risk Dashboard</h1>
+    <div>
+      <span id="last-updated"></span>
+      <button id="refresh-btn">Refresh now</button>
+      <a href="/logout" class="link">Logout</a>
+    </div>
+  </header>
+
+  <section id="funds-summary" class="cards"></section>
+
+  <section id="alerts"></section>
+
+  <section>
+    <h2>F&amp;O Positions</h2>
+    <table id="positions-table">
+      <thead>
+        <tr>
+          <th>Symbol</th><th>Side</th><th>Qty</th><th>Type</th><th>Strike</th>
+          <th>LTP</th><th>Spot</th><th>Dist. to ITM %</th><th>DTE</th><th>PnL</th><th>Status</th><th>Notes</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Holdings (Portfolio)</h2>
+    <table id="holdings-table">
+      <thead>
+        <tr><th>Symbol</th><th>Qty</th><th>Avg. Cost</th><th>LTP</th><th>PnL</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <p id="error-banner" class="error" style="display:none"></p>
+
+  <script>
+    const statusClass = {
+      CRITICAL: 'status-critical', WARNING: 'status-warning',
+      ITM: 'status-warning', NEAR_ITM: 'status-warning',
+      OK: 'status-ok', UNKNOWN: 'status-unknown'
+    };
+
+    async function loadData() {
+      const res = await fetch('/api/data');
+      if (res.status === 401) { window.location = '/'; return; }
+      const data = await res.json();
+      render(data);
+    }
+
+    function render(data) {
+      document.getElementById('last-updated').textContent = data.last_updated ? `Updated: ${data.last_updated}` : '';
+
+      const errBanner = document.getElementById('error-banner');
+      if (data.error) { errBanner.style.display = 'block'; errBanner.textContent = data.error; }
+      else { errBanner.style.display = 'none'; }
+
+      const fs = data.funds_summary || {};
+      document.getElementById('funds-summary').innerHTML = `
+        <div class="card"><div class="label">Available Cash</div><div class="value">₹${fmt(fs.available_cash)}</div></div>
+        <div class="card"><div class="label">Margin Used</div><div class="value">₹${fmt(fs.used_margin)}</div></div>
+        <div class="card"><div class="label">Net</div><div class="value">₹${fmt(fs.net)}</div></div>
+      `;
+
+      const alertsEl = document.getElementById('alerts');
+      alertsEl.innerHTML = (data.alerts || []).map(a => `
+        <div class="alert alert-${a.level.toLowerCase()}"><b>${a.level}</b> — ${a.symbol}: ${a.message}</div>
+      `).join('') || '<p class="muted">No active alerts.</p>';
+
+      const posBody = document.querySelector('#positions-table tbody');
+      posBody.innerHTML = (data.positions || []).map(p => `
+        <tr class="${statusClass[p.status] || ''}">
+          <td>${p.tradingsymbol}</td>
+          <td>${p.side}</td>
+          <td>${p.quantity}</td>
+          <td>${p.option_type || (p.is_option ? '' : 'FUT')}</td>
+          <td>${fmtNum(p.strike)}</td>
+          <td>${fmtNum(p.last_price)}</td>
+          <td>${fmtNum(p.spot)}</td>
+          <td>${p.distance_to_itm_pct != null ? p.distance_to_itm_pct.toFixed(2) + '%' : ''}</td>
+          <td>${p.days_to_expiry ?? ''}</td>
+          <td class="${pnlClass(p.pnl)}">${fmtPnl(p.pnl)}</td>
+          <td>${p.status}</td>
+          <td>${(p.notes || []).join('<br>')}</td>
+        </tr>
+      `).join('');
+
+      const holdBody = document.querySelector('#holdings-table tbody');
+      holdBody.innerHTML = (data.holdings || []).map(h => `
+        <tr>
+          <td>${h.tradingsymbol}</td>
+          <td>${h.quantity}</td>
+          <td>${h.average_price}</td>
+          <td>${h.last_price}</td>
+          <td>${h.pnl}</td>
+        </tr>
+      `).join('');
+    }
+
+    function fmt(n) {
+      if (n === null || n === undefined) return 'N/A';
+      return Number(n).toLocaleString('en-IN', {maximumFractionDigits: 0});
+    }
+
+    function fmtNum(n) {
+      if (n === null || n === undefined) return '';
+      return Number(n).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function fmtPnl(n) {
+      if (n === null || n === undefined) return '';
+      const val = Number(n);
+      const prefix = val >= 0 ? '+' : '';
+      return prefix + val.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function pnlClass(n) {
+      if (n === null || n === undefined) return '';
+      return Number(n) >= 0 ? 'pnl-positive' : 'pnl-negative';
+    }
+
+    document.getElementById('refresh-btn').addEventListener('click', async () => {
+      await fetch('/api/refresh', { method: 'POST' });
+      loadData();
+    });
+
+    loadData();
+    setInterval(loadData, 30000); // poll every 30s
+  </script>
+</body>
+</html>

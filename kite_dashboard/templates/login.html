@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Kite Risk Dashboard — Login</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="login-box">
+    <h1>Kite Risk Dashboard</h1>
+    {% if not configured %}
+      <p class="error">API credentials aren't fully configured yet. Check .env against .env.example
+      (KITE_API_KEY/SECRET always required; PAYTM_API_KEY/SECRET also required if
+      MARKET_DATA_PROVIDER=paytm), then restart the app.</p>
+    {% else %}
+      <p>Positions, holdings, and funds come from Kite. {% if using_paytm %}Live prices come from Paytm Money.{% endif %}
+         Both need a fresh login today.</p>
+
+      {% if not kite_logged_in %}
+        <a class="btn" href="{{ kite_login_url }}">Login with Kite</a>
+      {% else %}
+        <p>✅ Kite: logged in</p>
+      {% endif %}
+
+      {% if using_paytm %}
+        <br>
+        {% if not paytm_logged_in %}
+          <a class="btn btn-paytm" href="{{ paytm_login_url }}">Login with Paytm Money</a>
+        {% else %}
+          <p>✅ Paytm: logged in</p>
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  </div>
+</body>
+</html>

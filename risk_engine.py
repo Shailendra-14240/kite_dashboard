@@ -55,9 +55,14 @@ def _days_to_expiry(expiry) -> int:
     return (expiry - date.today()).days
 
 
-def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=None):
+def analyze_positions(kite, positions, funds, instruments_nfo, holdings=None, instruments_bfo=None):
     """
     Returns a list of position-risk dicts and a list of alert dicts.
+
+    `holdings` is used as a fallback spot source: for stock options the
+    underlying's last price comes straight from the holdings response when
+    live market data isn't available (and from a FUT position on the same
+    underlying as a second fallback).
     """
     net_positions = positions.get("net", [])
     fo_positions = [p for p in net_positions if p.get("exchange") in ("NFO", "BFO") and p.get("quantity", 0) != 0]
@@ -69,6 +74,7 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
     instruments = dict(instruments_nfo)
     if instruments_bfo:
         instruments.update(instruments_bfo)
+    fallback_spot = _fallback_spot_map(holdings, fo_positions, instruments)
 
     underlying_keys = set()
     underlying_infos = {}
@@ -108,6 +114,7 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
 
     results = []
     alerts = []
+    missing_spot = False
 
     for item in enriched:
         p, info, is_option = item["position"], item["instrument"], item["is_option"]
@@ -168,7 +175,11 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
         strike = info.get("strike")
         u_info = _underlying_info(info["name"])
         underlying_key = _key(u_info)
+        # Live spot first; fall back to last_price from holdings (or a FUT
+        # position on the same underlying) when market data isn't available.
         spot = spot_prices.get(underlying_key)
+        if spot is None:
+            spot = fallback_spot.get(underlying_key)
         opt_type = info.get("instrument_type")
         dte = _days_to_expiry(info.get("expiry"))
 
@@ -181,8 +192,15 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
         })
 
         if spot is None or not strike:
-            row["status"] = "UNKNOWN"
-            row["notes"].append("Could not fetch underlying spot price to assess ITM proximity.")
+            # No live spot price (e.g. market-data permission not enabled yet) —
+            # we can't assess ITM proximity, so the row just shows Kite's own
+            # last_price/PnL without a risk status. Only a missing strike is
+            # genuinely a data problem worth flagging.
+            if not strike:
+                row["status"] = "UNKNOWN"
+                row["notes"].append("Missing strike info for this instrument.")
+            elif spot is None:
+                missing_spot = True
             results.append(row)
             continue
 
@@ -203,7 +221,6 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
         # Risk is highest for SHORT option positions moving/already ITM
         if side == "SHORT" and (is_itm or is_near_itm):
             severity = "CRITICAL" if is_itm else "WARNING"
-            row["status"] = severity
             msg = (
                 f"{p['tradingsymbol']} (SHORT {opt_type}) is "
                 f"{'already ITM' if is_itm else f'within {distance_pct:.2f}% of going ITM'} "
@@ -211,6 +228,26 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
             )
             row["notes"].append(msg)
 
+            # Stock options settle physically: if we already hold enough of the
+            # underlying, the short can be met by delivering existing shares —
+            # no cash/margin pressure to buy in the market, so it's not critical.
+            if info["name"] not in INDEX_SPOT_MAP:
+                held = _holdings_qty(holdings, info["name"])
+                if held >= abs(qty):
+                    row["status"] = is_itm and "ITM" or "NEAR_ITM"
+                    row["notes"].append(
+                        f"Covered by {held:g} share(s) held in the portfolio — delivery can be met "
+                        f"from existing holdings, so there's no cash/margin pressure to close this."
+                    )
+                    results.append(row)
+                    continue
+                if held > 0:
+                    row["notes"].append(
+                        f"Holdings cover only {held:g} of {abs(qty):g} share(s) — a shortfall of "
+                        f"{abs(qty) - held:g} share(s) remains."
+                    )
+
+            row["status"] = severity
             # Estimate margin impact
             margin_est = estimate_order_margin(kite, [{
                 "exchange": p["exchange"],
@@ -264,7 +301,44 @@ def analyze_positions(kite, positions, funds, instruments_nfo, instruments_bfo=N
 
         results.append(row)
 
+    if missing_spot:
+        alerts.append({
+            "level": "INFO",
+            "symbol": "—",
+            "message": (
+                "ITM proximity check unavailable for some options: no live spot and no "
+                "price for the underlying in holdings/FUT positions. Enable market data "
+                "on the Kite Connect app (or set MARKET_DATA_PROVIDER=paytm) for full coverage."
+            ),
+        })
+
     return results, alerts, _funds_summary(funds)
+
+
+def _holdings_qty(holdings, symbol):
+    """Total quantity held of an underlying stock (used for physical-delivery coverage)."""
+    return sum(h.get("quantity", 0) for h in holdings or [] if h.get("tradingsymbol") == symbol)
+
+
+def _fallback_spot_map(holdings, fo_positions, instruments):
+    """
+    Builds {key: last_price} for underlying spot prices without any live
+    market-data calls:
+      - equity holdings: the underlying stock's own last_price (exact spot)
+      - F&O FUT positions: the future's last_price for that underlying
+        (approximates spot; used only if the stock isn't in holdings)
+    Keys use the same f"{exchange}:{symbol}" format as live quotes.
+    """
+    spot = {}
+    for h in holdings or []:
+        if h.get("last_price") and h.get("tradingsymbol"):
+            spot.setdefault(f"{h['exchange']}:{h['tradingsymbol']}", h["last_price"])
+    for p in fo_positions:
+        info = instruments.get((p["exchange"], p["tradingsymbol"]))
+        if info and info.get("instrument_type") == "FUT" and p.get("last_price"):
+            key = _key(_underlying_info(info["name"]))
+            spot.setdefault(key, p["last_price"])
+    return spot
 
 
 def _available_cash(funds):

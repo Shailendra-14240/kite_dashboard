@@ -104,6 +104,69 @@ def api_refresh():
     return jsonify(state)
 
 
+@app.route("/pl")
+def pl_page():
+    if not logged_in():
+        return redirect("/")
+    from pnl_engine import days_realized, totals
+    from ledger import ledger as ledger_db
+    return render_template(
+        "pl.html",
+        days=days_realized(),
+        totals=totals(),
+        pending=ledger_db.unconfirmed_settlements(),
+        status={
+            "first_snapshot": ledger_db.first_snapshot_ts(),
+            "snapshots": ledger_db.count("position_snapshots"),
+            "trades": ledger_db.count("trades"),
+            "settlements": ledger_db.count("settlements"),
+        },
+        captured_trades=ledger_db.recent_trades(100),
+        config=config,
+    )
+
+
+@app.route("/pl/confirm/<int:sid>", methods=["POST"])
+def pl_confirm(sid):
+    if not logged_in():
+        return redirect("/")
+    from ledger import ledger as ledger_db
+    ledger_db.confirm_settlement(sid)
+    return redirect("/pl")
+
+
+@app.route("/pl/delete/<int:sid>", methods=["POST"])
+def pl_delete(sid):
+    if not logged_in():
+        return redirect("/")
+    from ledger import ledger as ledger_db
+    ledger_db.delete_settlement(sid)
+    return redirect("/pl")
+
+
+@app.route("/trades")
+def trades_page():
+    """Today's orders, fills, and open positions (live from Kite)."""
+    if not logged_in():
+        return redirect("/")
+    kite = kite_auth.get_authenticated_kite()
+    orders, fills, positions = [], [], []
+    error = None
+    try:
+        orders = kite.orders() or []
+        fills = kite.trades() or []
+        positions = (kite.positions() or {}).get("net", []) or []
+    except Exception as e:
+        error = f"{type(e).__name__}: {e}"
+    return render_template(
+        "trades.html",
+        orders=orders,
+        fills=fills,
+        positions=[p for p in positions if p.get("quantity", 0) != 0],
+        error=error,
+    )
+
+
 if __name__ == "__main__":
     start_scheduler()
     app.run(host="127.0.0.1", port=config.FLASK_PORT, debug=False)

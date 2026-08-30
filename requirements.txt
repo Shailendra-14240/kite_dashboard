@@ -1,7 +1,10 @@
-flask==3.0.3
+﻿flask==3.0.3
 kiteconnect==5.0.1
 python-dotenv==1.0.1
 APScheduler==3.10.4
 
-# Only needed if MARKET_DATA_PROVIDER=paytm in .env — not on PyPI, installed from GitHub.
-#git+https://github.com/paytmmoney/pyPMClient.git
+# Only needed if MARKET_DATA_PROVIDER=paytm in .env. The pyPMClient SDK itself
+# is vendored in ./pyPMClient (its GitHub setup.py doesn't build under modern
+# setuptools), but it needs these two runtime deps:
+httpx==0.28.1
+websocket-client==1.9.0

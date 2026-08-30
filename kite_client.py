@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 _instrument_cache = {"data": None, "fetched_at": 0}
 INSTRUMENT_CACHE_TTL_SECONDS = 6 * 60 * 60  # instruments don't change intraday
+_ltp_error_logged = False
 
 
 def get_holdings(kite):
@@ -54,16 +55,20 @@ def get_ltp(kite, instrument_keys):
     if not instrument_keys:
         return {}
     result = {}
+    global _ltp_error_logged
     chunk_size = 200
     for i in range(0, len(instrument_keys), chunk_size):
         chunk = instrument_keys[i:i + chunk_size]
         try:
             result.update(kite.ltp(chunk))
         except Exception as e:
-            logger.error(
-                "kite.ltp() failed (%s) — likely a market-data permission issue on the Kite Connect app. "
-                "holdings/positions/funds will still work; ITM checks will show as UNKNOWN.", e
-            )
+            if not _ltp_error_logged:
+                _ltp_error_logged = True
+                logger.error(
+                    "kite.ltp() failed (%s) — likely a market-data permission issue on the Kite Connect app. "
+                    "holdings/positions/funds will still work; ITM proximity checks are skipped until market "
+                    "data is enabled. (suppressing further repeat logs)", e
+                )
     return result
 
 

@@ -29,6 +29,11 @@ class Config:
 
     TOKEN_STORE_PATH = os.getenv("TOKEN_STORE_PATH", "token.json")
 
+    # --- P&L ledger (future realized P&L tracking) ---
+    PL_DB_PATH = os.getenv("PL_DB_PATH", "pl.db")
+    TRADE_POLL_SECONDS = int(os.getenv("TRADE_POLL_SECONDS", "60"))  # kite.trades() poll cadence in market hours
+    EOD_TRIGGER_TIME = os.getenv("EOD_TRIGGER_TIME", "15:35")  # IST; forced end-of-day snapshot anchor
+
     # --- Market data provider ---
     # "kite" uses kite.ltp() (needs paid Kite Connect subscription).
     # "paytm" uses your free Paytm Money Open API for spot prices, while

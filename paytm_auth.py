@@ -4,8 +4,10 @@ log in through Paytm's actual login page (their ToS doesn't allow headless
 login either), you get a request_token back on redirect, and you exchange
 that for session tokens.
 
-NOTE: Paytm's SDK (pyPMClient) isn't on PyPI — it must be installed from
-GitHub (see requirements.txt: `git+https://github.com/paytmmoney/pyPMClient.git`).
+NOTE: Paytm's SDK (pyPMClient) isn't on PyPI and its GitHub `setup.py` doesn't
+build under modern setuptools, so it's vendored in this repo at `pyPMClient/`
+and imported straight from the project root. Its runtime deps (`httpx`,
+`websocket-client`) are in the `paytm` extra in pyproject.toml (`uv sync --extra paytm`).
 
 We store 3 tokens Paytm issues: access_token, public_access_token (used for
 the websocket), and read_access_token. We're assuming (not 100% confirmed)
@@ -56,8 +58,8 @@ class PaytmAuth:
     def __init__(self):
         if PMClient is None:
             raise RuntimeError(
-                "pyPMClient isn't installed. Run: "
-                "pip install git+https://github.com/paytmmoney/pyPMClient.git"
+                "pyPMClient isn't importable. It's vendored at pyPMClient/ in the "
+                "project root — run the app from there (e.g. `uv run python app.py`)."
             )
         if not config.PAYTM_API_KEY or not config.PAYTM_API_SECRET:
             raise RuntimeError(

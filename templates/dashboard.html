@@ -11,6 +11,8 @@
     <div>
       <span id="last-updated"></span>
       <button id="refresh-btn">Refresh now</button>
+      <a href="/trades" class="link">Trades</a>
+      <a href="/pl" class="link">P&amp;L</a>
       <a href="/logout" class="link">Logout</a>
     </div>
   </header>
@@ -21,6 +23,7 @@
 
   <section>
     <h2>F&amp;O Positions</h2>
+    <div id="fo-summary" class="cards"></div>
     <table id="positions-table">
       <thead>
         <tr>
@@ -34,6 +37,7 @@
 
   <section>
     <h2>Holdings (Portfolio)</h2>
+    <div id="holdings-summary" class="cards"></div>
     <table id="holdings-table">
       <thead>
         <tr><th>Symbol</th><th>Qty</th><th>Avg. Cost</th><th>LTP</th><th>PnL</th></tr>
@@ -78,6 +82,20 @@
       `).join('') || '<p class="muted">No active alerts.</p>';
 
       const posBody = document.querySelector('#positions-table tbody');
+
+      const fo = data.positions || [];
+      const foPnl = fo.reduce((s, p) => s + (Number(p.pnl) || 0), 0);
+      const premCollected = fo.filter(p => p.is_option && p.side === 'SHORT')
+        .reduce((s, p) => s + (Number(p.average_price) || 0) * Math.abs(p.quantity), 0);
+      const premPaid = fo.filter(p => p.is_option && p.side === 'LONG')
+        .reduce((s, p) => s + (Number(p.average_price) || 0) * Math.abs(p.quantity), 0);
+      document.getElementById('fo-summary').innerHTML = `
+        <div class="card"><div class="label">F&amp;O Total P&amp;L</div><div class="value ${pnlClass(foPnl)}">${fmtPnl(foPnl)}</div></div>
+        <div class="card"><div class="label">Premium Collected (Short options)</div><div class="value pnl-positive">₹${fmt(premCollected)}</div></div>
+        <div class="card"><div class="label">Premium Paid (Long options)</div><div class="value">₹${fmt(premPaid)}</div></div>
+        <div class="card"><div class="label">Premium Net</div><div class="value ${pnlClass(premCollected - premPaid)}">₹${fmt(premCollected - premPaid)}</div></div>
+      `;
+
       posBody.innerHTML = (data.positions || []).map(p => `
         <tr class="${statusClass[p.status] || ''}">
           <td>${p.tradingsymbol}</td>
@@ -96,37 +114,50 @@
       `).join('');
 
       const holdBody = document.querySelector('#holdings-table tbody');
-      holdBody.innerHTML = (data.holdings || []).map(h => `
+      const hold = data.holdings || [];
+      const holdPnl = hold.reduce((s, h) => s + (Number(h.pnl) || 0), 0);
+      document.getElementById('holdings-summary').innerHTML = `
+        <div class="card"><div class="label">Holdings Total P&amp;L</div><div class="value ${pnlClass(holdPnl)}">${fmtPnl(holdPnl)}</div></div>
+      `;
+      holdBody.innerHTML = hold.map(h => `
         <tr>
           <td>${h.tradingsymbol}</td>
-          <td>${h.quantity}</td>
-          <td>${h.average_price}</td>
-          <td>${h.last_price}</td>
-          <td>${h.pnl}</td>
+          <td>${fmt(h.quantity)}</td>
+          <td>${fmtNum(h.average_price)}</td>
+          <td>${fmtNum(h.last_price)}</td>
+          <td class="${pnlClass(h.pnl)}">${fmtPnl(h.pnl)}</td>
         </tr>
       `).join('');
     }
 
+    function num(n) {
+      const v = Number(n);
+      return (n === null || n === undefined || Number.isNaN(v)) ? null : v;
+    }
+
     function fmt(n) {
-      if (n === null || n === undefined) return 'N/A';
-      return Number(n).toLocaleString('en-IN', {maximumFractionDigits: 0});
+      const v = num(n);
+      if (v === null) return 'N/A';
+      return v.toLocaleString('en-IN', {maximumFractionDigits: 0});
     }
 
     function fmtNum(n) {
-      if (n === null || n === undefined) return '';
-      return Number(n).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const v = num(n);
+      if (v === null) return '';
+      return v.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 
     function fmtPnl(n) {
-      if (n === null || n === undefined) return '';
-      const val = Number(n);
-      const prefix = val >= 0 ? '+' : '';
-      return prefix + val.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const v = num(n);
+      if (v === null) return '';
+      const prefix = v >= 0 ? '+' : '';
+      return prefix + v.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 
     function pnlClass(n) {
-      if (n === null || n === undefined) return '';
-      return Number(n) >= 0 ? 'pnl-positive' : 'pnl-negative';
+      const v = num(n);
+      if (v === null) return '';
+      return v >= 0 ? 'pnl-positive' : 'pnl-negative';
     }
 
     document.getElementById('refresh-btn').addEventListener('click', async () => {

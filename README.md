@@ -64,10 +64,8 @@ funds) still comes from Kite, which works fine on the free/Personal Kite app.
    PAYTM_API_KEY=your_key
    PAYTM_API_SECRET=your_secret
    ```
-4. Install the SDK (it's not on PyPI, so it's in `requirements.txt` as a git URL):
-   ```
-   pip install -r requirements.txt
-   ```
+4. Install it with uv (preferred — see below) or, if you don't use uv,
+   `pip install -r requirements.txt`.
 5. Run the app, log in with **both** Kite and Paytm Money (two separate
    buttons will show on the login page), and you're set.
 
@@ -85,10 +83,23 @@ guesses in `paytm_market_data.py` can then be corrected exactly.
 
 ## 3. Install and run
 
+uv is preferred (per the official Zerodha Kite Connect agent setup guide). If
+you don't have it, install it with `winget install --id=astral-sh.uv -e`.
+
 ```bash
-pip install -r requirements.txt
-python app.py
+uv sync                # creates .venv and installs all deps
+uv run python app.py   # run the dashboard
 ```
+
+Using the Paytm Money integration? Then sync with the extra:
+
+```bash
+uv sync --extra paytm  # installs httpx + websocket-client for the vendored pyPMClient
+```
+
+Not using uv? `pip install -r requirements.txt` and `python app.py` work too
+(the Paytm SDK is vendored in `pyPMClient/`, so no install is needed for it —
+its deps are listed in `requirements.txt` under a comment).
 
 Open http://127.0.0.1:5000 — click **Login with Kite**, log in as normal
 (password + TOTP), and you'll land on the dashboard.

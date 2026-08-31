@@ -64,9 +64,9 @@ if (-not $sched_exists) {
 Write-Host "Uploading setup script and config files..."
 gcloud compute scp vm_setup.sh $INSTANCE_NAME`: --zone=$ZONE --project=$PROJECT_ID
 
-if (Test-Path ".env") {
-    gcloud compute scp .env $INSTANCE_NAME`: --zone=$ZONE --project=$PROJECT_ID
-}
+Write-Host "Fetching .env from GCP Secret Manager..."
+gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command="gcloud secrets versions access latest --secret='kite_trading_secret' > ~/kite_dashboard/.env"
+
 if (Test-Path "pl.db") {
     gcloud compute scp pl.db $INSTANCE_NAME`: --zone=$ZONE --project=$PROJECT_ID
 }

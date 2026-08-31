@@ -2,6 +2,7 @@
 kiteconnect==5.0.1
 python-dotenv==1.0.1
 APScheduler==3.10.4
+google-cloud-secret-manager==2.30.0
 
 # Only needed if MARKET_DATA_PROVIDER=paytm in .env. The pyPMClient SDK itself
 # is vendored in ./pyPMClient (its GitHub setup.py doesn't build under modern

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Today's Trades — Kite Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    td.right, th.right { text-align: right; }
+    .status-open { color: #1976d2; font-weight: 600; }
+    .status-complete { color: #2e7d32; font-weight: 600; }
+    .status-cancelled, .status-rejected { color: #c62828; }
+    .muted { color: #888; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Today's Trades</h1>
+    <div>
+      <a href="/" class="link">Dashboard</a>
+      <a href="/pl" class="link">P&amp;L</a>
+      <a href="/trades" class="link">Trades</a>
+      <a href="/logout" class="link">Logout</a>
+    </div>
+  </header>
+
+  {% if error %}
+    <p class="error">Could not fetch from Kite: {{ error }}</p>
+  {% endif %}
+
+  <section>
+    <h2>Open Positions</h2>
+    {% if positions %}
+    <table>
+      <thead>
+        <tr><th>Symbol</th><th>Exchange</th><th class="right">Qty</th><th class="right">Avg Price</th><th class="right">Last</th><th class="right">PnL</th><th>Product</th></tr>
+      </thead>
+      <tbody>
+      {% for p in positions %}
+        <tr>
+          <td>{{ p.tradingsymbol }}</td>
+          <td>{{ p.exchange }}</td>
+          <td class="right">{{ p.quantity }}</td>
+          <td class="right">{{ p.average_price }}</td>
+          <td class="right">{{ p.last_price }}</td>
+          <td class="right {{ 'pnl-positive' if (p.pnl or 0) >= 0 else 'pnl-negative' }}">{{ p.pnl }}</td>
+          <td>{{ p.product }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">No open positions.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Orders Today ({{ orders|length }})</h2>
+    {% if orders %}
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Symbol</th><th>Side</th><th class="right">Qty</th><th class="right">Filled</th><th class="right">Price</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+      {% for o in orders %}
+        <tr>
+          <td>{{ o.exchange_timestamp }}</td>
+          <td>{{ o.tradingsymbol }}</td>
+          <td>{{ o.transaction_type }}</td>
+          <td class="right">{{ o.quantity }}</td>
+          <td class="right">{{ o.filled_quantity }}</td>
+          <td class="right">{{ o.price }}</td>
+          <td class="status-{{ o.status|lower }}">{{ o.status }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">No orders today.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Fills Today ({{ fills|length }})</h2>
+    {% if fills %}
+    <table>
+      <thead>
+        <tr><th>Time</th><th>Symbol</th><th>Side</th><th class="right">Qty</th><th class="right">Price</th></tr>
+      </thead>
+      <tbody>
+      {% for t in fills %}
+        <tr>
+          <td>{{ t.exchange_timestamp }}</td>
+          <td>{{ t.tradingsymbol }}</td>
+          <td>{{ t.transaction_type }}</td>
+          <td class="right">{{ t.quantity }}</td>
+          <td class="right">{{ t.price }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">No fills today.</p>
+    {% endif %}
+  </section>
+</body>
+</html>

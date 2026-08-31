@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>P&amp;L Ledger — Kite Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .btn-sm { margin: 0; padding: 4px 10px; font-size: 12px; }
+    details.day-detail { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 8px; }
+    details.day-detail summary { padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    details.day-detail .sub { font-size: 12px; color: #777; }
+    table.inner { box-shadow: none; border-radius: 0; }
+    table.inner th { background: #f5f5f5; }
+    td.right, th.right { text-align: right; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .pill-est { background: #fff3e0; color: #e65100; }
+    .pill-conf { background: #e8f5e9; color: #2e7d32; }
+    .muted { color: #888; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Realized P&amp;L Ledger</h1>
+    <div>
+      <a href="/" class="link">Dashboard</a>
+      <a href="/pl" class="link">P&amp;L</a>
+    </div>
+  </header>
+
+  <section class="cards">
+    <div class="card"><div class="label">Total Realized P&amp;L</div><div class="value">{{ "%.2f"|format(totals.total) }}</div></div>
+    <div class="card"><div class="label">Days Recorded</div><div class="value">{{ totals.days }}</div></div>
+  </section>
+
+  <p class="muted">
+    Recording since <b>{{ status.first_snapshot or '—' }}</b> ·
+    {{ status.snapshots }} snapshots · {{ status.trades }} trade(s) · {{ status.settlements }} settlement(s).
+    Realized P&amp;L is calculated from fills (captured during market hours) and expiry settlements.
+  </p>
+
+  <section id="pending">
+    <h2>Needs confirmation (estimated settlements)</h2>
+    {% if pending %}
+      {% for s in pending %}
+      <div class="alert alert-warning">
+        <b>{{ s.trade_date }}</b> — {{ s.tradingsymbol }}:
+        {{ s.note }} Realized <b class="{{ 'pnl-positive' if s.realized_pnl >= 0 else 'pnl-negative' }}">{{ "%+.2f"|format(s.realized_pnl) }}</b>
+        <span class="pill pill-est">estimated</span>
+        <form method="post" action="/pl/confirm/{{ s.id }}" style="display:inline">
+          <button class="btn-sm" type="submit">Confirm</button>
+        </form>
+        <form method="post" action="/pl/delete/{{ s.id }}" style="display:inline">
+          <button class="btn-sm" type="submit">Delete</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">Nothing pending — every settlement is confirmed.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Captured trades (latest {{ captured_trades|length }})</h2>
+    {% if captured_trades %}
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Time</th><th>Symbol</th><th>Side</th><th class="right">Qty</th><th class="right">Price</th></tr>
+      </thead>
+      <tbody>
+      {% for t in captured_trades %}
+        <tr>
+          <td>{{ t.trade_date }}</td>
+          <td>{{ t.exchange_timestamp[11:19] if t.exchange_timestamp }}</td>
+          <td>{{ t.tradingsymbol }}</td>
+          <td class="{{ 'pnl-positive' if t.transaction_type == 'SELL' else '' }}">{{ t.transaction_type }}</td>
+          <td class="right">{{ t.quantity }}</td>
+          <td class="right">{{ t.price }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">No fills captured yet — trades you place while the app is running will appear here within a minute during market hours.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Per-day breakdown</h2>
+    {% if days %}
+      {% for d in days %}
+      <details class="day-detail">
+        <summary>
+          <span><b>{{ d.day }}</b></span>
+          <span class="{{ 'pnl-positive' if d.pnl >= 0 else 'pnl-negative' }}"><b>{{ "%+.2f"|format(d.pnl) }}</b></span>
+        </summary>
+        <table class="inner">
+          <thead>
+            <tr><th>Symbol</th><th class="right">Trades</th><th>Settlement</th><th class="right">Realized P&amp;L</th></tr>
+          </thead>
+          <tbody>
+          {% for r in d.detail %}
+            <tr>
+              <td>{{ r.symbol }}</td>
+              <td class="right">{{ r.trades }}</td>
+              <td>
+                {% for s in r.settlements %}
+                  <span class="pill {{ 'pill-conf' if s.confirmed else 'pill-est' }}">{{ s.kind }}</span> {{ s.note }}<br>
+                {% endfor %}
+              </td>
+              <td class="right {{ 'pnl-positive' if r.pnl >= 0 else 'pnl-negative' }}">{{ "%+.2f"|format(r.pnl) }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </details>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No realized P&amp;L yet. Once you trade while the app is running, fills are captured automatically from kite.trades() every {{ config.TRADE_POLL_SECONDS }}s, and OTM expiries are settled automatically.</p>
+    {% endif %}
+  </section>
+</body>
+</html>

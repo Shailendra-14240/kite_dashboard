@@ -1,0 +1,17 @@
+[project]
+name = "kite-dashboard"
+version = "0.1.0"
+description = "Kite Connect (Zerodha) risk dashboard — ITM proximity and margin coverage alerts"
+requires-python = ">=3.10"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "flask>=3.1.3",
+    "kiteconnect>=5.2.1",
+    "python-dotenv>=1.2.2",
+]
+
+[project.optional-dependencies]
+paytm = [
+    "httpx>=0.28.1",
+    "websocket-client>=1.9.0",
+]

@@ -14,10 +14,14 @@ if (-not $ip_exists) {
 $STATIC_IP = gcloud compute addresses describe kite-dashboard-ip --region=$REGION --project=$PROJECT_ID --format="value(address)"
 Write-Host "Static IP is $STATIC_IP"
 
-Write-Host "Creating Firewall Rule..."
-$fw_exists = gcloud compute firewall-rules list --filter="name=allow-http-80" --format="value(name)" --project=$PROJECT_ID
-if (-not $fw_exists) {
-    gcloud compute firewall-rules create allow-http-80 --allow tcp:80 --target-tags=http-server --project=$PROJECT_ID
+Write-Host "Creating Firewall Rules..."
+$fw_http = gcloud compute firewall-rules list --filter="name=allow-http-80" --format="value(name)" --project=$PROJECT_ID
+if (-not $fw_http) {
+    gcloud compute firewall-rules create allow-http-80 --allow tcp:80 --source-ranges 0.0.0.0/0 --project=$PROJECT_ID
+}
+$fw_https = gcloud compute firewall-rules list --filter="name=allow-https" --format="value(name)" --project=$PROJECT_ID
+if (-not $fw_https) {
+    gcloud compute firewall-rules create allow-https --allow tcp:443 --source-ranges 0.0.0.0/0 --description "Allow HTTPS" --project=$PROJECT_ID
 }
 
 Write-Host "Creating VM Instance..."
@@ -28,17 +32,19 @@ if (-not $vm_exists) {
         --zone=$ZONE `
         --machine-type=e2-micro `
         --address=$STATIC_IP `
-        --tags=http-server `
+        --tags=http-server,https-server `
         --image-family=ubuntu-2204-lts `
         --image-project=ubuntu-os-cloud `
         --boot-disk-size=10GB `
-        --boot-disk-type=pd-standard
+        --boot-disk-type=pd-standard `
+        --scopes=https://www.googleapis.com/auth/cloud-platform
     
     Write-Host "Waiting for VM SSH to become available..."
     Start-Sleep -Seconds 30
 } else {
-    Write-Host "VM already exists, ensuring it is started..."
+    Write-Host "VM already exists, ensuring it is started and has proper scopes..."
     gcloud compute instances start $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID
+    gcloud compute instances set-service-account $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --scopes=https://www.googleapis.com/auth/cloud-platform
 }
 
 Write-Host "Setting up Instance Schedule..."
@@ -64,9 +70,6 @@ if (-not $sched_exists) {
 Write-Host "Uploading setup script and config files..."
 gcloud compute scp vm_setup.sh $INSTANCE_NAME`: --zone=$ZONE --project=$PROJECT_ID
 
-Write-Host "Fetching .env from GCP Secret Manager..."
-gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command="gcloud secrets versions access latest --secret='kite_trading_secret' > ~/kite_dashboard/.env"
-
 if (Test-Path "pl.db") {
     gcloud compute scp pl.db $INSTANCE_NAME`: --zone=$ZONE --project=$PROJECT_ID
 }
@@ -80,13 +83,19 @@ if (Test-Path "paytm_token.json") {
 Write-Host "Running VM Setup Script (via Git Clone)..."
 gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command="bash vm_setup.sh"
 
+Write-Host "Fetching .env from GCP Secret Manager..."
+gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command="gcloud secrets versions access latest --secret='kite_trading_secret' --project=$PROJECT_ID > ~/kite_dashboard/.env"
+
 Write-Host "Starting Dashboard Service..."
 gcloud compute ssh $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --command="sudo systemctl restart kite-dashboard.service"
 
 Write-Host ""
 Write-Host "============================================="
 Write-Host "DEPLOYMENT COMPLETE!"
-Write-Host "Your dashboard will be available at: http://$STATIC_IP"
-Write-Host "Remember to update KITE_REDIRECT_URL and PAYTM_REDIRECT_URL"
-Write-Host "to point to this public IP in your API consoles and .env file!"
+Write-Host "Your dashboard: https://$STATIC_IP"
+Write-Host "(Browser will show a security warning - click Advanced > Proceed)"
+Write-Host ""
+Write-Host "Kite redirect URL  : https://$STATIC_IP/callback"
+Write-Host "Paytm redirect URL : https://$STATIC_IP/paytm_callback"
+Write-Host "Update these in your API consoles AND in GCP Secret Manager (.env)"
 Write-Host "============================================="

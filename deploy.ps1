@@ -32,19 +32,24 @@ if (-not $vm_exists) {
         --zone=$ZONE `
         --machine-type=e2-micro `
         --address=$STATIC_IP `
-        --tags=http-server,https-server `
+        "--tags=http-server,https-server" `
         --image-family=ubuntu-2204-lts `
         --image-project=ubuntu-os-cloud `
         --boot-disk-size=10GB `
         --boot-disk-type=pd-standard `
         --scopes=https://www.googleapis.com/auth/cloud-platform
     
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: VM creation failed. Aborting."
+        exit 1
+    }
+
     Write-Host "Waiting for VM SSH to become available..."
     Start-Sleep -Seconds 30
 } else {
-    Write-Host "VM already exists, ensuring it is started and has proper scopes..."
+    Write-Host "VM already exists, ensuring it is started..."
     gcloud compute instances start $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID
-    gcloud compute instances set-service-account $INSTANCE_NAME --zone=$ZONE --project=$PROJECT_ID --scopes=https://www.googleapis.com/auth/cloud-platform
+    Start-Sleep -Seconds 10
 }
 
 Write-Host "Setting up Instance Schedule..."
